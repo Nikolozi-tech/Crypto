@@ -1,0 +1,36 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "Single-page personal crypto investment dashboard",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nikolozi-tech/Crypto.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Nikolozi-tech/Crypto/issues"
+  },
+  "homepage": "https://github.com/Nikolozi-tech/Crypto#readme",
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
+  },
+  "private": true,
+  "type": "module"
+}
