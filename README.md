@@ -1,17 +1,20 @@
 # Business Crypto Treasury Dashboard
 
 A single-page, dark-mode business crypto treasury dashboard for live BTC,
-ETH, and SOL prices, recurring allocation scenarios, and tactical execution
-entries sized with a strict 1% capital-risk rule.
+ETH, and SOL prices, recurring allocation scenarios, treasury operating
+metrics, governance readiness, and tactical execution entries sized with a
+strict 1% capital-risk rule.
 
 ## Features
 
 - Live CoinGecko price feed for Bitcoin, Ethereum, and Solana.
 - Tailwind CSS powered dark UI with responsive dashboard cards.
+- Treasury operating model for cash reserves, runway, holdings, target
+  allocation, stress tests, governance controls, and CSV reporting.
 - Treasury allocation model with monthly budget, coin, horizon, and assumed
   annual growth inputs.
-- Execution risk register that stores entries locally in the browser and
-  calculates position size from 1% treasury account risk.
+- Execution risk register that stores entries locally in the browser, calculates
+  position size from 1% treasury account risk, and exports CSV logs.
 
 ## Development
 
