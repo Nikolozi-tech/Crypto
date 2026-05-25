@@ -95,6 +95,31 @@ function parsePositiveNumber(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return "0.0%";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
+function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
+  const csv = rows
+    .map((row) =>
+      row
+        .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
+        .join(","),
+    )
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function loadTrades() {
   try {
     const rawTrades = window.localStorage.getItem("crypto-dashboard-trades");
@@ -211,6 +236,8 @@ function App() {
 
         <PriceGrid prices={prices} isLoading={isLoading} />
 
+        <TreasuryOperatingModel prices={prices} />
+
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
           <DcaCalculator prices={prices} />
           <TradingDiary prices={prices} />
@@ -233,17 +260,18 @@ function Hero({
     <header className="grid gap-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur md:grid-cols-[1fr_auto] md:items-end lg:p-8">
       <div>
         <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
-          Personal crypto command center
+          Business crypto treasury desk
         </div>
         <h1 className="max-w-4xl text-4xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
-          Invest with rhythm.
+          Manage treasury exposure.
           <span className="block bg-gradient-to-r from-cyan-200 via-fuchsia-300 to-amber-200 bg-clip-text text-transparent">
-            Trade with rules.
+            Allocate with controls.
           </span>
         </h1>
         <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-          Track live BTC, ETH, and SOL prices, model a recurring DCA plan, and
-          size every short-term trade from a strict 1% account-risk limit.
+          Monitor live BTC, ETH, and SOL markets, model recurring treasury
+          allocations, and size tactical entries from a strict 1% capital-risk
+          policy.
         </p>
       </div>
 
@@ -324,6 +352,342 @@ function PriceGrid({
   );
 }
 
+function TreasuryOperatingModel({ prices }: { prices: CoinPriceMap }) {
+  const [cashReserve, setCashReserve] = useState("250000");
+  const [monthlyBurn, setMonthlyBurn] = useState("60000");
+  const [monthlyAllocation, setMonthlyAllocation] = useState("15000");
+  const [targetAllocation, setTargetAllocation] = useState("8");
+  const [stressShock, setStressShock] = useState("-35");
+  const [holdings, setHoldings] = useState<Record<CoinSymbol, string>>({
+    BTC: "1.25",
+    ETH: "18",
+    SOL: "500",
+  });
+  const [controls, setControls] = useState<Record<string, boolean>>({
+    boardMandate: true,
+    custodyPolicy: true,
+    counterpartyReview: false,
+    monthlyReporting: true,
+    stopLossPolicy: true,
+    taxWorkflow: false,
+  });
+
+  const model = useMemo(() => {
+    const cash = parsePositiveNumber(cashReserve);
+    const burn = parsePositiveNumber(monthlyBurn);
+    const monthly = parsePositiveNumber(monthlyAllocation);
+    const targetPercent = parsePositiveNumber(targetAllocation);
+    const shockPercent = Number(stressShock);
+    const stressPercent = Number.isFinite(shockPercent) ? shockPercent : 0;
+
+    const coinRows = COINS.map((coin) => {
+      const units = parsePositiveNumber(holdings[coin.symbol]);
+      const spot = prices[coin.symbol]?.usd ?? 0;
+      const value = units * spot;
+      const stressedValue = value * (1 + stressPercent / 100);
+
+      return {
+        ...coin,
+        units,
+        spot,
+        value,
+        stressedValue: Math.max(0, stressedValue),
+      };
+    });
+
+    const cryptoValue = coinRows.reduce((sum, row) => sum + row.value, 0);
+    const totalTreasury = cash + cryptoValue;
+    const cryptoAllocation = totalTreasury > 0 ? (cryptoValue / totalTreasury) * 100 : 0;
+    const targetCryptoValue = totalTreasury * (targetPercent / 100);
+    const allocationGap = targetCryptoValue - cryptoValue;
+    const monthsToTarget = allocationGap > 0 && monthly > 0 ? allocationGap / monthly : 0;
+    const reserveCoverage = burn > 0 ? cash / burn : 0;
+    const riskBudget = totalTreasury * 0.01;
+    const stressedCryptoValue = coinRows.reduce(
+      (sum, row) => sum + row.stressedValue,
+      0,
+    );
+    const stressedTreasury = cash + stressedCryptoValue;
+
+    const scenarios = [
+      { name: "Bear case", returnPercent: -35, tone: "text-rose-300" },
+      { name: "Base case", returnPercent: 12, tone: "text-cyan-200" },
+      { name: "Bull case", returnPercent: 55, tone: "text-emerald-300" },
+    ].map((scenario) => {
+      const annualContributions = monthly * 12;
+      const futureCrypto =
+        cryptoValue * (1 + scenario.returnPercent / 100) +
+        annualContributions * (1 + scenario.returnPercent / 200);
+      const futureCash = Math.max(0, cash - annualContributions);
+      const totalValue = futureCash + Math.max(0, futureCrypto);
+
+      return {
+        ...scenario,
+        totalValue,
+        change: totalValue - totalTreasury,
+      };
+    });
+
+    return {
+      cash,
+      burn,
+      monthly,
+      targetPercent,
+      stressPercent,
+      coinRows,
+      cryptoValue,
+      totalTreasury,
+      cryptoAllocation,
+      allocationGap,
+      monthsToTarget,
+      reserveCoverage,
+      riskBudget,
+      stressedTreasury,
+      scenarios,
+    };
+  }, [cashReserve, holdings, monthlyAllocation, monthlyBurn, prices, stressShock, targetAllocation]);
+
+  const controlRows = [
+    ["boardMandate", "Board mandate approved"],
+    ["custodyPolicy", "Custody and key-management policy"],
+    ["counterpartyReview", "Exchange / OTC counterparty review"],
+    ["monthlyReporting", "Monthly treasury reporting cadence"],
+    ["stopLossPolicy", "Tactical stop-loss policy"],
+    ["taxWorkflow", "Tax and accounting workflow"],
+  ] as const;
+  const completedControls = controlRows.filter(([key]) => controls[key]).length;
+  const readinessScore = Math.round((completedControls / controlRows.length) * 100);
+
+  function exportTreasuryReport() {
+    downloadCsv("treasury-operating-model.csv", [
+      ["Metric", "Value"],
+      ["Cash reserve", model.cash],
+      ["Crypto market value", model.cryptoValue],
+      ["Total treasury", model.totalTreasury],
+      ["Current crypto allocation", `${model.cryptoAllocation.toFixed(2)}%`],
+      ["Target crypto allocation", `${model.targetPercent.toFixed(2)}%`],
+      ["Allocation gap", model.allocationGap],
+      ["Reserve coverage months", model.reserveCoverage.toFixed(2)],
+      ["1% risk budget", model.riskBudget],
+      ["Stress test treasury value", model.stressedTreasury],
+      [],
+      ["Coin", "Units", "Spot", "Market value"],
+      ...model.coinRows.map((row) => [row.symbol, row.units, row.spot, row.value]),
+      [],
+      ["Control", "Status"],
+      ...controlRows.map(([key, label]) => [label, controls[key] ? "Complete" : "Open"]),
+    ]);
+  }
+
+  return (
+    <section className="rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-emerald-950/30 backdrop-blur">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.25em] text-emerald-200">
+            Full business model
+          </p>
+          <h2 className="mt-3 text-3xl font-black text-white">
+            Treasury operating cockpit
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+            Model cash runway, crypto exposure, board-approved allocation
+            targets, downside stress, tactical risk budget, and governance
+            readiness from one executive view.
+          </p>
+        </div>
+        <button
+          className="rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-5 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/20"
+          type="button"
+          onClick={exportTreasuryReport}
+        >
+          Export treasury CSV
+        </button>
+      </div>
+
+      <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <InputField
+          id="cash-reserve"
+          label="Operating cash reserve"
+          prefix="$"
+          value={cashReserve}
+          onChange={setCashReserve}
+        />
+        <InputField
+          id="monthly-burn"
+          label="Monthly operating burn"
+          prefix="$"
+          value={monthlyBurn}
+          onChange={setMonthlyBurn}
+        />
+        <InputField
+          id="monthly-allocation"
+          label="Monthly crypto budget"
+          prefix="$"
+          value={monthlyAllocation}
+          onChange={setMonthlyAllocation}
+        />
+        <InputField
+          id="target-allocation"
+          label="Target crypto allocation"
+          suffix="%"
+          value={targetAllocation}
+          onChange={setTargetAllocation}
+        />
+        <InputField
+          id="stress-shock"
+          label="Stress test shock"
+          suffix="%"
+          value={stressShock}
+          onChange={setStressShock}
+          allowNegative
+        />
+      </div>
+
+      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total treasury"
+          value={formatCurrency(model.totalTreasury, true)}
+          highlight
+        />
+        <StatCard
+          label="Crypto allocation"
+          value={formatPercent(model.cryptoAllocation)}
+        />
+        <StatCard
+          label="Cash runway"
+          value={`${model.reserveCoverage.toFixed(1)} months`}
+        />
+        <StatCard label="1% risk budget" value={formatCurrency(model.riskBudget)} />
+      </div>
+
+      <div className="mt-7 grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+        <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-lg font-black text-white">Treasury exposure</h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Target gap: {formatCurrency(model.allocationGap, true)}
+                {model.allocationGap > 0
+                  ? `, about ${model.monthsToTarget.toFixed(1)} months at current budget`
+                  : ", target allocation is already met or exceeded"}
+              </p>
+            </div>
+            <p className="rounded-2xl bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-200">
+              Stress value: {formatCurrency(model.stressedTreasury, true)}
+            </p>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {model.coinRows.map((row) => (
+              <div
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                key={row.symbol}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className={`font-black ${row.accent}`}>{row.symbol}</p>
+                  <p className="text-xs text-slate-500">
+                    {row.spot ? formatCurrency(row.spot) : "No quote"}
+                  </p>
+                </div>
+                <InputField
+                  id={`holding-${row.symbol}`}
+                  label="Units held"
+                  value={holdings[row.symbol]}
+                  onChange={(value) =>
+                    setHoldings((current) => ({
+                      ...current,
+                      [row.symbol]: value,
+                    }))
+                  }
+                />
+                <p className="mt-3 text-sm text-slate-400">
+                  Market value
+                  <span className="ml-2 font-bold text-white">
+                    {formatCurrency(row.value, true)}
+                  </span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-5">
+          <h3 className="text-lg font-black text-white">12-month scenarios</h3>
+          <div className="mt-5 space-y-3">
+            {model.scenarios.map((scenario) => (
+              <div
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                key={scenario.name}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-bold text-white">{scenario.name}</p>
+                  <p className={`font-black ${scenario.tone}`}>
+                    {scenario.returnPercent > 0 ? "+" : ""}
+                    {scenario.returnPercent}%
+                  </p>
+                </div>
+                <div className="mt-3 flex items-end justify-between gap-3">
+                  <p className="text-sm text-slate-400">Projected treasury</p>
+                  <p className="text-xl font-black text-white">
+                    {formatCurrency(scenario.totalValue, true)}
+                  </p>
+                </div>
+                <p
+                  className={`mt-1 text-sm font-semibold ${
+                    scenario.change >= 0 ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
+                  {scenario.change >= 0 ? "+" : ""}
+                  {formatCurrency(scenario.change, true)} vs today
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-7 rounded-3xl border border-white/10 bg-slate-950/70 p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-black text-white">Governance readiness</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              {completedControls} of {controlRows.length} treasury controls complete
+            </p>
+          </div>
+          <p className="text-3xl font-black text-emerald-200">{readinessScore}%</p>
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-300 via-cyan-300 to-fuchsia-300"
+            style={{ width: `${readinessScore}%` }}
+          />
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {controlRows.map(([key, label]) => (
+            <label
+              className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/30"
+              key={key}
+            >
+              <input
+                checked={controls[key]}
+                className="h-4 w-4 accent-emerald-300"
+                type="checkbox"
+                onChange={(event) =>
+                  setControls((current) => ({
+                    ...current,
+                    [key]: event.target.checked,
+                  }))
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DcaCalculator({ prices }: { prices: CoinPriceMap }) {
   const [monthlyAmount, setMonthlyAmount] = useState("500");
   const [selectedCoin, setSelectedCoin] = useState<CoinSymbol>("BTC");
@@ -370,21 +734,21 @@ function DcaCalculator({ prices }: { prices: CoinPriceMap }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.25em] text-cyan-200">
-            DCA projection
+            Treasury allocation model
           </p>
           <h2 className="mt-3 text-3xl font-black text-white">
-            Build your long-term stack
+            Plan corporate digital asset exposure
           </h2>
         </div>
         <div className="rounded-2xl bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100">
-          Mock model, not financial advice
+          Scenario model for internal planning
         </div>
       </div>
 
       <div className="mt-7 grid gap-4 md:grid-cols-2">
         <InputField
           id="monthly-amount"
-          label="Target monthly DCA"
+          label="Monthly allocation budget"
           prefix="$"
           value={monthlyAmount}
           onChange={setMonthlyAmount}
@@ -397,14 +761,14 @@ function DcaCalculator({ prices }: { prices: CoinPriceMap }) {
         />
         <InputField
           id="projection-years"
-          label="Investment horizon"
+          label="Planning horizon"
           suffix="years"
           value={years}
           onChange={setYears}
         />
         <InputField
           id="annual-return"
-          label="Mock annual growth"
+          label="Assumed annual growth"
           suffix="%"
           value={annualReturn}
           onChange={setAnnualReturn}
@@ -414,16 +778,16 @@ function DcaCalculator({ prices }: { prices: CoinPriceMap }) {
 
       <div className="mt-7 grid gap-4 sm:grid-cols-3">
         <StatCard
-          label="Total contributed"
+          label="Capital deployed"
           value={formatCurrency(projection.invested, true)}
         />
         <StatCard
-          label="Projected value"
+          label="Projected treasury value"
           value={formatCurrency(projection.futureValue, true)}
           highlight
         />
         <StatCard
-          label="Mock growth"
+          label="Scenario upside"
           value={formatCurrency(projection.growth, true)}
         />
       </div>
@@ -432,7 +796,7 @@ function DcaCalculator({ prices }: { prices: CoinPriceMap }) {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-slate-400">
-              Approximate {selectedCoin} accumulated at today's spot price
+              Estimated {selectedCoin} exposure at today's spot price
             </p>
             <p className={`mt-1 text-2xl font-black ${coinBySymbol[selectedCoin].accent}`}>
               {numberFormatter.format(projection.approximateCoins)}{" "}
@@ -549,18 +913,46 @@ function TradingDiary({ prices }: { prices: CoinPriceMap }) {
 
   const totalRisk = trades.reduce((sum, trade) => sum + trade.riskAmount, 0);
 
+  function exportTrades() {
+    downloadCsv("execution-risk-register.csv", [
+      [
+        "Created at",
+        "Coin",
+        "Direction",
+        "Entry",
+        "Stop",
+        "Risk amount",
+        "Position units",
+        "Notional",
+        "Notes",
+      ],
+      ...trades.map((trade) => [
+        trade.createdAt,
+        trade.coin,
+        trade.side,
+        trade.entryPrice,
+        trade.stopPrice,
+        trade.riskAmount,
+        trade.units,
+        trade.notional,
+        trade.note,
+      ]),
+    ]);
+  }
+
   return (
     <section className="rounded-[2rem] border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-fuchsia-950/30">
       <div>
         <p className="text-sm font-bold uppercase tracking-[0.25em] text-fuchsia-200">
-          Trading diary
+          Execution risk register
         </p>
         <h2 className="mt-3 text-3xl font-black text-white">
-          Log trades with a 1% risk cap
+          Record tactical entries with a 1% risk cap
         </h2>
         <p className="mt-3 text-sm leading-6 text-slate-400">
-          Position size is calculated as account risk divided by the distance
-          between entry and stop. The risk budget is always 1% of account size.
+          Position size is calculated as capital at risk divided by the distance
+          between entry and stop. The risk budget is always 1% of treasury
+          account value.
         </p>
       </div>
 
@@ -568,7 +960,7 @@ function TradingDiary({ prices }: { prices: CoinPriceMap }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <InputField
             id="account-size"
-            label="Account size"
+            label="Treasury account value"
             prefix="$"
             value={accountSize}
             onChange={setAccountSize}
@@ -619,10 +1011,10 @@ function TradingDiary({ prices }: { prices: CoinPriceMap }) {
         </div>
 
         <label className="grid gap-2 text-sm font-semibold text-slate-300">
-          Trade thesis / notes
+          Business rationale / notes
           <textarea
             className="min-h-24 rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-fuchsia-300"
-            placeholder="Setup, invalidation, catalyst, emotions..."
+            placeholder="Mandate, invalidation, catalyst, approval notes..."
             value={note}
             onChange={(event) => setNote(event.target.value)}
           />
@@ -630,19 +1022,19 @@ function TradingDiary({ prices }: { prices: CoinPriceMap }) {
 
         {!sizing.validStopDirection && sizing.stop > 0 && sizing.entry > 0 ? (
           <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-            Check the stop direction: longs usually place stops below entry,
-            while shorts usually place stops above entry.
+            Check the stop direction: long exposure usually uses stops below entry,
+            while short exposure usually uses stops above entry.
           </p>
         ) : null}
 
         <div className="grid gap-4 rounded-3xl border border-white/10 bg-slate-950/70 p-5 sm:grid-cols-3">
-          <StatCard label="1% risk budget" value={formatCurrency(sizing.riskAmount)} />
+          <StatCard label="1% capital risk" value={formatCurrency(sizing.riskAmount)} />
           <StatCard
             label="Position size"
             value={`${numberFormatter.format(sizing.units)} ${coin}`}
             highlight
           />
-          <StatCard label="Position notional" value={formatCurrency(sizing.notional)} />
+          <StatCard label="Exposure notional" value={formatCurrency(sizing.notional)} />
         </div>
 
         <button
@@ -650,21 +1042,31 @@ function TradingDiary({ prices }: { prices: CoinPriceMap }) {
           type="submit"
           disabled={!sizing.canSave}
         >
-          Log trade
+          Log execution
         </button>
       </form>
 
       <div className="mt-7">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-black text-white">Recent trades</h3>
-          <p className="text-sm text-slate-400">
-            Logged risk: {formatCurrency(totalRisk)}
-          </p>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-black text-white">Recent executions</h3>
+            <p className="text-sm text-slate-400">
+              Registered risk: {formatCurrency(totalRisk)}
+            </p>
+          </div>
+          <button
+            className="rounded-2xl border border-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-300 transition hover:border-fuchsia-300/40 hover:text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            disabled={trades.length === 0}
+            onClick={exportTrades}
+          >
+            Export CSV
+          </button>
         </div>
 
         {trades.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm text-slate-400">
-            No trades yet. Add one above to start building your journal.
+            No executions yet. Add one above to start building the risk register.
           </div>
         ) : (
           <div className="space-y-3">
